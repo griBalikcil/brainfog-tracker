@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brain Fog Takip</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;background:#f5f7fb;color:#111827;margin:0}
+.wrap{max-width:760px;margin:auto;padding:16px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{font-size:12px;color:#6b7280;display:block;margin-bottom:5px}
+input,select,textarea{width:100%;box-sizing:border-box;padding:11px;border:1px solid #d1d5db;border-radius:10px;font-size:16px}
+textarea{min-height:70px}
+button{padding:12px;border:0;border-radius:10px;font-weight:700;cursor:pointer}
+.primary{width:100%;background:#111827;color:white}
+.secondary{background:#e5e7eb}
+.danger{background:#fee2e2;color:#991b1b}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.actions button{flex:1}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:#f9fafb;border-radius:12px;padding:10px;text-align:center}
+.stat b{font-size:22px;display:block}
+.stat span,.hint,.meta{font-size:12px;color:#6b7280}
+.entry{border-top:1px solid #e5e7eb;padding:12px 0}
+.pill{display:inline-block;background:#eef2ff;border-radius:999px;padding:3px 8px;font-size:11px;margin:3px 3px 0 0}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Brain Fog Takip</h1>
+<p class="hint">Uyku • şeker • öğün • sıvı • idrar • kısa kestirme</p>
+
+<div class="card"><div class="grid">
+<div><label>Tarih</label><input id="date" type="date"></div>
+<div><label>Saat</label><input id="time" type="time"></div>
+<div><label>Durum</label><select id="context"><option>Sabah</option><option>Öğün sonrası</option><option>Bulanıklık anı</option><option>Egzersiz sonrası</option><option>Kestirme öncesi</option><option>Kestirme sonrası</option><option>Akşam</option></select></div>
+<div><label>Bulanıklık (0–10)</label><input id="fog" type="number" min="0" max="10"></div>
+<div><label>Kan şekeri (mg/dL)</label><input id="glucose" type="number"></div>
+<div><label>Son öğünden beri (dk)</label><input id="mealMins" type="number"></div>
+<div style="grid-column:1/-1"><label>Son öğün / içerik</label><input id="meal"></div>
+<div><label>Susama (0–10)</label><input id="thirst" type="number" min="0" max="10"></div>
+<div><label>Bugünkü idrar sayısı</label><input id="urineCount" type="number"></div>
+<div><label>İdrar miktarı</label><select id="urineAmount"><option value="">—</option><option>Az</option><option>Normal</option><option>Çok</option></select></div>
+<div><label>İdrar rengi</label><select id="urineColor"><option value="">—</option><option>Çok açık</option><option>Açık sarı</option><option>Sarı</option><option>Koyu sarı</option></select></div>
+<div><label>İçilen sıvı (mL, bugün)</label><input id="water" type="number"></div>
+<div><label>Kafein</label><input id="caffeine"></div>
+<div><label>Uyku (saat)</label><input id="sleepHours" type="number" step="0.1"></div>
+<div><label>Gece uyanma / tuvalet</label><input id="nightWake" type="number"></div>
+<div><label>Uyku kalitesi (0–10)</label><input id="sleepQuality" type="number" min="0" max="10"></div>
+<div><label>Magnezyum</label><select id="magnesium"><option value="">—</option><option>Evet</option><option>Hayır</option></select></div>
+<div><label>Kestirme süresi (dk)</label><input id="napMins" type="number"></div>
+<div><label>Kestirme sonrası bulanıklık (0–10)</label><input id="fogAfterNap" type="number" min="0" max="10"></div>
+<div style="grid-column:1/-1"><label>Not</label><textarea id="note"></textarea></div>
+</div><div style="height:12px"></div><button class="primary" onclick="saveEntry()">Kaydı ekle</button>
+<p class="hint">Veriler yalnızca bu cihazdaki tarayıcıda tutulur. CSV dışa aktarabilirsin.</p></div>
+
+<div class="card">
+<div class="stats">
+<div class="stat"><b id="countStat">0</b><span>Kayıt</span></div>
+<div class="stat"><b id="fogStat">—</b><span>Ort. bulanıklık</span></div>
+<div class="stat"><b id="napStat">—</b><span>Kestirme faydası</span></div>
+</div>
+<div id="pattern" class="hint" style="margin-top:10px"></div>
+</div>
+
+<div class="card"><div class="actions">
+<button class="secondary" onclick="exportCSV()">CSV indir</button>
+<button class="secondary" onclick="copySummary()">Özeti kopyala</button>
+<button class="danger" onclick="clearAll()">Tümünü sil</button>
+</div></div>
+
+<div class="card"><strong>Son kayıtlar</strong><div id="entries"></div></div>
+</div>
+
+<script>
+const KEY='brainfog-tracker-v1';
+const fields=['date','time','context','fog','glucose','mealMins','meal','thirst','urineCount','urineAmount','urineColor','water','caffeine','sleepHours','nightWake','sleepQuality','magnesium','napMins','fogAfterNap','note'];
+const nums=new Set(['fog','glucose','mealMins','thirst','urineCount','water','sleepHours','nightWake','sleepQuality','napMins','fogAfterNap']);
+function defaults(){const n=new Date();date.value=n.toISOString().slice(0,10);time.value=n.toTimeString().slice(0,5)}
+function getData(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch{return[]}}
+function setData(x){localStorage.setItem(KEY,JSON.stringify(x))}
+function saveEntry(){
+ const e={id:Date.now()};
+ for(const f of fields){const v=document.getElementById(f).value;e[f]=nums.has(f)&&v!==''?Number(v):v}
+ if(e.fog===''&&e.glucose===''&&e.note===''){alert('En az bulanıklık, şeker veya not gir.');return}
+ const d=getData();d.unshift(e);setData(d);render();
+ for(const f of fields){if(!['date','time','context'].includes(f))document.getElementById(f).value=''} defaults();
+}
+function avg(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:null}
+function render(){
+ const d=getData(), fogs=d.map(x=>x.fog).filter(x=>typeof x==='number');
+ countStat.textContent=d.length;fogStat.textContent=fogs.length?avg(fogs).toFixed(1):'—';
+ const b=d.filter(x=>typeof x.fog==='number'&&typeof x.fogAfterNap==='number'&&x.napMins>0).map(x=>x.fog-x.fogAfterNap);
+ napStat.textContent=b.length?(avg(b)>0?'+':'')+avg(b).toFixed(1):'—';
+ const low=d.filter(x=>typeof x.glucose==='number'&&x.glucose<70).length;
+ pattern.textContent=(low?low+' kayıtta şeker 70 mg/dL altında. ':'')+(b.length>=2?'Kestirme sonrası ortalama değişim: '+avg(b).toFixed(1)+' puan.':'');
+ entries.innerHTML=d.slice(0,25).map(e=>`<div class="entry"><strong>${e.date||''} ${e.time||''} — ${e.context||''}</strong><br>
+ <span class="pill">Fog ${e.fog===''?'—':e.fog}/10</span>${e.glucose!==''?`<span class="pill">Şeker ${e.glucose}</span>`:''}${e.napMins?`<span class="pill">Kestirme ${e.napMins} dk</span>`:''}
+ <div class="meta">${e.meal?'Öğün: '+e.meal+' · ':''}${e.note||''}</div>
+ <button class="danger" style="padding:6px 9px;margin-top:6px" onclick="delEntry(${e.id})">Sil</button></div>`).join('')||'<p class="hint">Henüz kayıt yok.</p>';
+}
+function delEntry(id){if(confirm('Kayıt silinsin mi?')){setData(getData().filter(x=>x.id!==id));render()}}
+function exportCSV(){const d=getData();if(!d.length){alert('Kayıt yok.');return}
+ const rows=[fields,...d.map(e=>fields.map(f=>e[f]??''))];
+ const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='brainfog-takip.csv';a.click()}
+function copySummary(){const d=getData(),f=d.map(x=>x.fog).filter(x=>typeof x==='number');navigator.clipboard.writeText(`Kayıt: ${d.length}\nOrt. bulanıklık: ${f.length?avg(f).toFixed(1):'—'}`).then(()=>alert('Özet kopyalandı.'))}
+function clearAll(){if(confirm('Tüm kayıtlar silinsin mi?')){localStorage.removeItem(KEY);render()}}
+defaults();render();
+</script>
+</body>
+</html>
