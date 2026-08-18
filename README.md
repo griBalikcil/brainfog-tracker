@@ -23,6 +23,8 @@ https://gribalikcil.github.io/brainfog-tracker/
 
 Redirect URLs içine de aynı URL'yi ekle.
 
+`config.js` içindeki `SITE_URL` de bu GitHub Pages adresi olmalı; Supabase proje URL'si olmamalı.
+
 ## 4) GitHub'a yükle
 Mevcut brainfog-tracker reposunda:
 - eski `index.html` yerine bu `index.html`

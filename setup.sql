@@ -105,6 +105,9 @@ create index if not exists idx_drinks_user_time on public.drinks(user_id, occurr
 create index if not exists idx_urinations_user_time on public.urinations(user_id, occurred_at desc);
 create index if not exists idx_naps_user_time on public.naps(user_id, occurred_at desc);
 create index if not exists idx_exercises_user_time on public.exercises(user_id, occurred_at desc);
+create index if not exists idx_measurements_user_local_date on public.measurements(user_id, local_date, occurred_at desc);
+create index if not exists idx_drinks_user_local_date on public.drinks(user_id, local_date);
+create index if not exists idx_urinations_user_local_date on public.urinations(user_id, local_date);
 
 -- RLS
 alter table public.daily_logs enable row level security;
@@ -120,10 +123,10 @@ drop policy if exists "daily_select_own" on public.daily_logs;
 drop policy if exists "daily_insert_own" on public.daily_logs;
 drop policy if exists "daily_update_own" on public.daily_logs;
 drop policy if exists "daily_delete_own" on public.daily_logs;
-create policy "daily_select_own" on public.daily_logs for select to authenticated using (auth.uid() = user_id);
-create policy "daily_insert_own" on public.daily_logs for insert to authenticated with check (auth.uid() = user_id);
-create policy "daily_update_own" on public.daily_logs for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "daily_delete_own" on public.daily_logs for delete to authenticated using (auth.uid() = user_id);
+create policy "daily_select_own" on public.daily_logs for select to authenticated using ((select auth.uid()) = user_id);
+create policy "daily_insert_own" on public.daily_logs for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "daily_update_own" on public.daily_logs for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "daily_delete_own" on public.daily_logs for delete to authenticated using ((select auth.uid()) = user_id);
 
 do $$
 declare t text;
@@ -135,10 +138,10 @@ begin
     execute format('drop policy if exists "%s_update_own" on public.%I', t, t);
     execute format('drop policy if exists "%s_delete_own" on public.%I', t, t);
 
-    execute format('create policy "%s_select_own" on public.%I for select to authenticated using (auth.uid() = user_id)', t, t);
-    execute format('create policy "%s_insert_own" on public.%I for insert to authenticated with check (auth.uid() = user_id)', t, t);
-    execute format('create policy "%s_update_own" on public.%I for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)', t, t);
-    execute format('create policy "%s_delete_own" on public.%I for delete to authenticated using (auth.uid() = user_id)', t, t);
+    execute format('create policy "%s_select_own" on public.%I for select to authenticated using ((select auth.uid()) = user_id)', t, t);
+    execute format('create policy "%s_insert_own" on public.%I for insert to authenticated with check ((select auth.uid()) = user_id)', t, t);
+    execute format('create policy "%s_update_own" on public.%I for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id)', t, t);
+    execute format('create policy "%s_delete_own" on public.%I for delete to authenticated using ((select auth.uid()) = user_id)', t, t);
   end loop;
 end $$;
 

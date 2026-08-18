@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
 <title>Brain Fog Takip</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+<script src="./config.js?v=20260818-1"></script>
 <style>
 :root{--bg:#f6f7fb;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--accent:#0f172a;--good:#166534;--bad:#b91c1c}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
@@ -50,6 +50,7 @@ textarea{min-height:72px;resize:vertical} button{border:0;border-radius:11px;pad
     <div><h1>Brain Fog Takip</h1><p class="sub">Uyku • öğün • glikoz • sıvı • idrar • kestirme</p></div>
     <button class="secondary" onclick="signOut()">Çıkış</button>
   </div>
+  <div id="appMsg"></div>
 
   <div class="nav">
     <button class="active" onclick="showSection('home',this)">Bugün</button>
@@ -146,9 +147,14 @@ textarea{min-height:72px;resize:vertical} button{border:0;border-radius:11px;pad
 </div>
 
 <script>
-const C=window.APP_CONFIG||{};
-const configOK=C.SUPABASE_URL && C.SUPABASE_PUBLISHABLE_KEY &&
- !C.SUPABASE_URL.includes('PASTE_') && !C.SUPABASE_PUBLISHABLE_KEY.includes('PASTE_');
+const rawConfig=window.APP_CONFIG||{};
+const C={
+  SUPABASE_URL:String(rawConfig.SUPABASE_URL||'').trim().replace(/\/$/,''),
+  SUPABASE_PUBLISHABLE_KEY:String(rawConfig.SUPABASE_PUBLISHABLE_KEY||'').trim(),
+  SITE_URL:String(rawConfig.SITE_URL||'').trim()
+};
+const configOK=/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(C.SUPABASE_URL) &&
+  /^(sb_publishable_|eyJ)/.test(C.SUPABASE_PUBLISHABLE_KEY);
 let db=null,user=null;
 
 function localDate(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
@@ -160,31 +166,44 @@ function b(id){const x=v(id);return x===''?null:x==='true'}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function avg(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:null}
 function setMsg(id,text,ok=true){document.getElementById(id).innerHTML=`<div class="${ok?'ok':'err'}">${esc(text)}</div>`}
+function clearMsg(id){document.getElementById(id).textContent=''}
+function firstError(results){return results.find(result=>result.error)?.error||null}
+function authRedirectURL(){
+  const fallback=new URL('./',window.location.href).href;
+  try{return new URL(C.SITE_URL||fallback).href}catch{return fallback}
+}
 
 async function init(){
   if(!configOK){
-    document.getElementById('authMsg').innerHTML='<div class="err">config.js içinde Supabase URL ve publishable key henüz girilmemiş.</div>';
+    setMsg('authMsg','config.js geçersiz: Supabase Project URL ve publishable key değerlerini kontrol et.',false);
     return;
   }
-  db=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-  const {data:{session}}=await db.auth.getSession();
-  if(session){user=session.user;showApp();await refreshAll()}
-  db.auth.onAuthStateChange(async(_event,session)=>{
-    user=session?.user||null;
-    if(user){showApp();await refreshAll()}else showAuth();
-  });
+  if(!window.supabase?.createClient){setMsg('authMsg','Supabase istemcisi yüklenemedi. İnternet bağlantını kontrol edip sayfayı yenile.',false);return}
+  try{
+    db=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    const {data:{session},error}=await db.auth.getSession();
+    if(error)throw error;
+    if(session){user=session.user;showApp();await refreshAll()}
+    db.auth.onAuthStateChange((_event,session)=>{
+      user=session?.user||null;
+      if(user){showApp();setTimeout(refreshAll,0)}else showAuth();
+    });
+  }catch(error){setMsg('authMsg',`Supabase bağlantısı kurulamadı: ${error.message}`,false)}
 }
 function showApp(){document.getElementById('auth').style.display='none';document.getElementById('app').style.display='block';defaults()}
 function showAuth(){document.getElementById('auth').style.display='block';document.getElementById('app').style.display='none'}
 async function signIn(){
   if(!db)return;
+  clearMsg('authMsg');
   const {error}=await db.auth.signInWithPassword({email:v('authEmail'),password:v('authPassword')});
   setMsg('authMsg',error?error.message:'Giriş başarılı.',!error);
 }
 async function signUp(){
   if(!db)return;
-  const {error}=await db.auth.signUp({email:v('authEmail'),password:v('authPassword'),options:{emailRedirectTo:C.SITE_URL}});
-  setMsg('authMsg',error?error.message:'Hesap oluşturuldu. E-posta doğrulaması istenirse gelen kutunu kontrol et.',!error);
+  clearMsg('authMsg');
+  const {data,error}=await db.auth.signUp({email:v('authEmail'),password:v('authPassword'),options:{emailRedirectTo:authRedirectURL()}});
+  const message=data?.session?'Hesap oluşturuldu ve giriş yapıldı.':'Hesap oluşturuldu. E-posta adresine gelen doğrulama bağlantısını aç.';
+  setMsg('authMsg',error?error.message:message,!error);
 }
 async function signOut(){await db.auth.signOut()}
 
@@ -252,16 +271,20 @@ async function saveEvent(){
   if(!error){document.getElementById('e_time').value=localTime();renderEventFields();await refreshAll()}
 }
 
-async function refreshAll(){await Promise.all([refreshHome(),refreshHistory()])}
+async function refreshAll(){
+  try{await Promise.all([refreshHome(),refreshHistory()]);clearMsg('appMsg')}
+  catch(error){setMsg('appMsg',`Veriler yüklenemedi: ${error.message}. setup.sql dosyasının Supabase SQL Editor'da çalıştırıldığını kontrol et.`,false)}
+}
 async function refreshHome(){
   const today=localDate();
   const [m,d,u,dl,naps]=await Promise.all([
-    db.from('measurements').select('*').eq('local_date',today).order('occurred_at',{ascending:false}),
-    db.from('drinks').select('*').eq('local_date',today),
-    db.from('urinations').select('*').eq('local_date',today),
-    db.from('daily_logs').select('*').eq('log_date',today).maybeSingle(),
-    db.from('naps').select('*').order('occurred_at',{ascending:false}).limit(30)
+    db.from('measurements').select('*').eq('user_id',user.id).eq('local_date',today).order('occurred_at',{ascending:false}),
+    db.from('drinks').select('*').eq('user_id',user.id).eq('local_date',today),
+    db.from('urinations').select('*').eq('user_id',user.id).eq('local_date',today),
+    db.from('daily_logs').select('*').eq('user_id',user.id).eq('log_date',today).maybeSingle(),
+    db.from('naps').select('*').eq('user_id',user.id).order('occurred_at',{ascending:false}).limit(30)
   ]);
+  const error=firstError([m,d,u,dl,naps]);if(error)throw error;
   const last=(m.data||[])[0];
   todayFog.textContent=last?.fog ?? '—';todayGlucose.textContent=last?.glucose ?? '—';
   todayWater.textContent=(d.data||[]).reduce((a,x)=>a+(x.ml||0),0);todayUrine.textContent=(u.data||[]).length;
@@ -277,14 +300,15 @@ async function refreshHistory(){
   if(!db||!user)return;
   const since=new Date(Date.now()-30*86400000).toISOString();
   const [daily,measure,meals,naps,drinks,urine,exercise]=await Promise.all([
-    db.from('daily_logs').select('*').gte('log_date',localDate(new Date(Date.now()-30*86400000))).order('log_date',{ascending:false}),
-    db.from('measurements').select('*').gte('occurred_at',since).order('occurred_at',{ascending:false}),
-    db.from('meals').select('*').gte('occurred_at',since).order('occurred_at',{ascending:false}),
-    db.from('naps').select('*').gte('occurred_at',since).order('occurred_at',{ascending:false}),
-    db.from('drinks').select('*').gte('occurred_at',since).order('occurred_at',{ascending:false}),
-    db.from('urinations').select('*').gte('occurred_at',since).order('occurred_at',{ascending:false}),
-    db.from('exercises').select('*').gte('occurred_at',since).order('occurred_at',{ascending:false})
+    db.from('daily_logs').select('*').eq('user_id',user.id).gte('log_date',localDate(new Date(Date.now()-30*86400000))).order('log_date',{ascending:false}),
+    db.from('measurements').select('*').eq('user_id',user.id).gte('occurred_at',since).order('occurred_at',{ascending:false}),
+    db.from('meals').select('*').eq('user_id',user.id).gte('occurred_at',since).order('occurred_at',{ascending:false}),
+    db.from('naps').select('*').eq('user_id',user.id).gte('occurred_at',since).order('occurred_at',{ascending:false}),
+    db.from('drinks').select('*').eq('user_id',user.id).gte('occurred_at',since).order('occurred_at',{ascending:false}),
+    db.from('urinations').select('*').eq('user_id',user.id).gte('occurred_at',since).order('occurred_at',{ascending:false}),
+    db.from('exercises').select('*').eq('user_id',user.id).gte('occurred_at',since).order('occurred_at',{ascending:false})
   ]);
+  const error=firstError([daily,measure,meals,naps,drinks,urine,exercise]);if(error)throw error;
   allDays.textContent=(daily.data||[]).length;allMeasurements.textContent=(measure.data||[]).length;allMeals.textContent=(meals.data||[]).length;allNaps.textContent=(naps.data||[]).length;
 
   let rows=[];
